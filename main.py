@@ -49,7 +49,7 @@ Farmer's Question: {data.query}
 Give a clear, practical answer in 2-3 sentences."""
 
   response = ai.models.generate_content(
-      model="gemini-2.5-flash-lite", contents=prompt
+      model="gemini-3.5-flash-lite", contents=prompt
   )
 
   # Step C: Return plain dictionary (FastAPI converts this to JSON automatically)
