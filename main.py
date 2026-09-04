@@ -1,4 +1,5 @@
 import os
+import time
 import chromadb
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. Initialize persistent ChromaDB and Gemini Client
+# 1. Initialize ChromaDB client and Gemini Client
 db = chromadb.PersistentClient(path="./chroma_db")
 collection = db.get_or_create_collection(name="agri_knowledge")
 ai = genai.Client()
@@ -32,33 +33,51 @@ def home():
 
 @app.post("/api/v1/ask")
 def ask_advisor(data: UserPrompt):
-    # Step A: Retrieve top 3 relevant chunks
+    # Step A: Vector retrieval from ChromaDB
     search_results = collection.query(query_texts=[data.query], n_results=3)
 
-    docs = search_results["documents"][0] if search_results["documents"] else []
-    metadatas = search_results["metadatas"][0] if search_results["metadatas"] else []
+    docs = search_results["documents"][0] if search_results.get("documents") and search_results["documents"] else []
+    metadatas = search_results["metadatas"][0] if search_results.get("metadatas") and search_results["metadatas"] else []
 
-    context = "\n---\n".join(docs)
-    source_name = metadatas[0]["source"] if metadatas else "ICAR Agricultural Guidelines"
+    context = "\n---\n".join(docs) if docs else "No specific institutional documents indexed for this exact topic."
+    source_name = metadatas[0]["source"] if metadatas else "General Agronomy Practice / KVK Advisory"
 
-    # Step B: Grounded yet helpful prompt
-    prompt = f"""You are an expert agricultural extension advisor assisting Indian farmers.
-Here is the verified context from our agronomy and government scheme database:
+    # Step B: Grounded prompt with intelligent fallback
+    prompt = f"""You are an agricultural advisor helping Indian farmers.
+
+VERIFIED CONTEXT FROM LOCAL DATABASE:
 {context}
 
-Farmer's Question: {data.query}
+FARMER'S QUESTION:
+{data.query}
 
-Guidelines:
-1. Prioritize facts, numbers, soil types, NPK dosages, and rules from the verified context.
-2. If the context covers the question (e.g. soil for rice/wheat, scheme details), give a clear, direct, and actionable answer in 2 to 3 concise sentences.
-3. Keep the tone helpful, encouraging, and tailored for practical farming."""
+INSTRUCTIONS:
+1. If the VERIFIED CONTEXT directly answers the question, base your response strictly on those facts, figures, and rules.
+2. If the VERIFIED CONTEXT does not cover the question, use your general agronomic knowledge to provide a clear, accurate, and practical recommendation in 2-3 sentences.
+3. Keep the response direct, actionable, and encouraging for a farmer."""
 
-    response = ai.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt
-    )
+    # Step C: Dedicated call to gemini-3.5-flash-lite with graceful error handling
+    response_text = None
+    for attempt in range(2):
+        try:
+            response = ai.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=prompt
+            )
+            if response and response.text:
+                response_text = response.text.strip()
+                break
+        except Exception as err:
+            print(f"[Warning] Attempt {attempt + 1} encountered an issue: {err}")
+            time.sleep(1.0)  # Brief pause in case of a temporary network/demand spike
+
+    if not response_text:
+        return {
+            "answer": "Our advisory servers are currently experiencing high demand. Please try asking your question again in a moment.",
+            "source_document": "System Advisory"
+        }
 
     return {
-        "answer": response.text.strip(),
+        "answer": response_text,
         "source_document": source_name
     }
