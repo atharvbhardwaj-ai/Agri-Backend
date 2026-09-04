@@ -52,7 +52,7 @@ FARMER'S QUESTION:
 {data.query}
 
 INSTRUCTIONS:
-1. If the VERIFIED CONTEXT directly answers the question, base your response strictly on those facts, figures, and rules.
+1. If the VERIFIED CONTEXT directly answers the question, base your response strictly on those facts, figures, and rules to provide a clear, accurate, and practical recommendation in 2-3 sentences.
 2. If the VERIFIED CONTEXT does not cover the question, use your general agronomic knowledge to provide a clear, accurate, and practical recommendation in 2-3 sentences.
 3. Keep the response direct, actionable, and encouraging for a farmer."""
 
