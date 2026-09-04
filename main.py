@@ -1,10 +1,14 @@
+import os
 import chromadb
 from fastapi import FastAPI
-from google import genai
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from google import genai
+from dotenv import load_dotenv
 
-app = FastAPI()
+load_dotenv()
+
+app = FastAPI(title="Agri-Advisor API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,43 +18,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. Connect to local ChromaDB and Gemini
+# 1. Initialize persistent ChromaDB and Gemini Client
 db = chromadb.PersistentClient(path="./chroma_db")
-collection = db.get_or_create_collection(name="agri_schemes")
+collection = db.get_or_create_collection(name="agri_knowledge")
 ai = genai.Client()
 
-
-# 2. Define the incoming request body
 class UserPrompt(BaseModel):
-  query: str
-
+    query: str
 
 @app.get("/")
 def home():
-  return {"status": "Agri-Advisor backend is live"}
-
+    return {"status": "Agri-Advisor backend is live and ready"}
 
 @app.post("/api/v1/ask")
 def ask_advisor(data: UserPrompt):
-  # Step A: Pull the top 2 matching text chunks from ChromaDB
-  search_results = collection.query(query_texts=[data.query], n_results=2)
+    # Step A: Retrieve top 3 relevant chunks
+    search_results = collection.query(query_texts=[data.query], n_results=3)
 
-  docs = search_results["documents"][0]
-  sources = search_results["metadatas"][0]
+    docs = search_results["documents"][0] if search_results["documents"] else []
+    metadatas = search_results["metadatas"][0] if search_results["metadatas"] else []
 
-  context = "\n".join(docs)
+    context = "\n---\n".join(docs)
+    source_name = metadatas[0]["source"] if metadatas else "ICAR Agricultural Guidelines"
 
-  # Step B: Pass context and question to Gemini
-  prompt = f"""You are an agricultural advisor helping Indian farmers.
-Answer the farmer's question using only this verified context:
+    # Step B: Grounded yet helpful prompt
+    prompt = f"""You are an expert agricultural extension advisor assisting Indian farmers.
+Here is the verified context from our agronomy and government scheme database:
 {context}
 
 Farmer's Question: {data.query}
-Give a clear, practical answer in 2-3 sentences."""
 
-  response = ai.models.generate_content(
-      model="gemini-3.5-flash-lite", contents=prompt
-  )
+Guidelines:
+1. Prioritize facts, numbers, soil types, NPK dosages, and rules from the verified context.
+2. If the context covers the question (e.g. soil for rice/wheat, scheme details), give a clear, direct, and actionable answer in 2 to 3 concise sentences.
+3. Keep the tone helpful, encouraging, and tailored for practical farming."""
 
-  # Step C: Return plain dictionary (FastAPI converts this to JSON automatically)
-  return {"answer": response.text, "source_document": sources[0]["source"]}
+    response = ai.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=prompt
+    )
+
+    return {
+        "answer": response.text.strip(),
+        "source_document": source_name
+    }
