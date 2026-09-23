@@ -98,26 +98,45 @@ async def grade_crop(
         mime_type = image.content_type or "image/jpeg"
 
         grading_prompt = f"""
-You are an expert agricultural quality inspector evaluating a sample batch of {crop_name} according to standard Indian physical market requirements.
+You are an expert agricultural quality inspector evaluating a sample batch of raw, harvested {crop_name} according to Indian physical market standards.
 
-Inspect the provided image strictly for surface and physical quality parameters:
-1. Surface Blemishes & Defect Ratio (visible cuts, fungal spots, insect marks, skin damage).
-2. Color Ripeness & Uniformity (appropriate commercial maturity stage vs underripe or decayed).
-3. Shape & Size Uniformity (consistency across the visible produce).
+CRITICAL FIRST CHECK (VALIDATION GATE):
+Examine if this image shows REAL, RAW, HARVESTED {crop_name} produce suitable for mandi/wholesale appraisal.
+- If the image contains cooked food, prepared dishes, processed goods, an entirely different crop/object, humans, or indoor furniture, it is INVALID.
+- In this case, DO NOT grade the produce. Immediately return the failure JSON schema below.
 
-Assign one of these preliminary grades:
-- "Grade A (Premium / Retail)": < 5% surface defects, uniform size and shape, ideal maturity.
-- "Grade B (Standard / Processing)": 5% - 15% minor defects, slight irregularities, safe for processing/local sale.
-- "Grade C (Distress / Rejection)": > 15% severe defects, visible rot, or major deformities.
+If the image is VALID raw {crop_name}, inspect physical surface parameters:
+1. Surface Blemishes & Defect Ratio (cuts, fungal spots, insect damage, rot)
+2. Color Ripeness & Uniformity (harvest maturity vs underripe/decayed)
+3. Shape & Size Uniformity (consistency across visible batch)
 
-Return ONLY a valid, raw JSON object matching this exact schema:
+Grading Rubric:
+- "Grade A (Premium / Retail)": < 5% defects, uniform shape and color.
+- "Grade B (Standard / Processing)": 5% - 15% minor defects, slight irregularities.
+- "Grade C (Distress / Rejection)": > 15% severe defects, visible rot, or major damage.
+
+Return ONLY a valid, raw JSON object matching one of these exact schemas:
+
+IF VALID RAW PRODUCE:
 {{
+    "is_valid_crop": true,
     "crop": "{crop_name}",
     "visual_grade": "Grade A" | "Grade B" | "Grade C",
     "blemish_percentage": float,
     "color_uniformity": "High" | "Medium" | "Low",
-    "observations": "Brief 1-2 sentence physical description of findings.",
-    "recommendation": "Clear 1-sentence note on best selling channel (e.g. Premium retail mandi, food processing unit, local spot market)."
+    "observations": "Brief 1-2 sentence physical description of produce.",
+    "recommendation": "1-sentence note on best selling channel."
+}}
+
+IF INVALID (Cooked food, wrong object, not raw harvest):
+{{
+    "is_valid_crop": false,
+    "crop": "{crop_name}",
+    "visual_grade": "Invalid",
+    "blemish_percentage": null,
+    "color_uniformity": null,
+    "observations": "Image does not depict raw, freshly harvested produce. Detected non-agricultural or processed item.",
+    "recommendation": "Please capture a clear photo of raw, harvested crop samples in natural lighting."
 }}
 """
 
